@@ -4,7 +4,18 @@
 > unificado a toda la red de almacenamiento. Llave + F para vincular,
 > interfaz propia con buscador.
 
-## 1. Estado actual (v0.26.0, server 0.7.2) — 17 oct 2026, NOMBRES DIRECTOS
+## 1. Estado actual (v1.0.0, server 0.7.2) — 17 oct 2026, PUBLICADO
+
+- v1.0.0 inglés global + MIT + build.ps1 + README EN. Commit `152ca7a` en
+  `main`, subido a https://github.com/Cosmar43/storage-heart. Tag `v1.0.0`.
+- Verificado en capturas: nombres ES→EN resuelven (mesa), llave dorada 3D,
+  UI inglesa abre bien.
+- PENDIENTE: `docs/` con capturas (usuario las guarda en screenshots/).
+
+- v1.0.0 inglés global + MIT + build.ps1 + README EN. Commit `152ca7a` en
+  `main`, subido a https://github.com/Cosmar43/storage-heart.
+- SSH con `~/.ssh/github` (`GIT_SSH_COMMAND='ssh -i ~/.ssh/github'`).
+- PENDIENTE: captura UI inglesa en juego; release con jar (vía web).
 
 - i18n mods imposible en 0.7.2 con evidencia completa (bytecode + logs):
   `.lang` cargan pero en mapa muerto; evento solo vía comando dev.

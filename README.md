@@ -6,6 +6,8 @@ with items (Heart + Key) and the F key.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+![Storage Heart interface](docs/interface.png)
+
 ## Usage
 
 1. Craft the **Storage Heart** and the **Heart Key** at the workbench
@@ -26,6 +28,10 @@ with items (Heart + Key) and the F key.
 |---|---|
 | Storage Heart | 10× iron bar + 15× planks (any wood) |
 | Heart Key | 3× copper bar + 1× iron bar |
+
+![Items](docs/items.png)
+
+| ![Heart recipe](docs/recipe-heart.png) | ![Key recipe](docs/recipe-key.png) |
 
 ## Requirements
 
