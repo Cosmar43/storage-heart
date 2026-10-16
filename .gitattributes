@@ -1,0 +1,9 @@
+# Normalize line endings to LF on commit (Windows-safe collaboration)
+* text=auto eol=lf
+
+# Images and jars stay binary
+*.png binary
+*.jpg binary
+*.jar binary
+*.blockymodel binary
+*.blockyanim binary

@@ -1,0 +1,38 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.storageheart'
+version = '1.0.0'
+description = 'Corazon de almacenamiento central estilo Magic Storage para Hytale (Update 7 / 0.7.x)'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'hytale'
+        url = uri('https://maven.hytale.com/release')
+    }
+}
+
+dependencies {
+    // El servidor esta disponible en runtime. No empaquetarlo.
+    compileOnly('com.hypixel.hytale:Server:+')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 25
+}
+
+jar {
+    archiveBaseName = 'StorageHeart'
+    from('src/main/resources') {
+        include 'manifest.json'
+    }
+}

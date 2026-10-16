@@ -1,0 +1,72 @@
+{
+  "TranslationProperties": {
+    "Name": "Storage Heart",
+    "Description": "Single access point to your whole chest network"
+  },
+  "PlayerAnimationsId": "Block",
+  "Categories": [
+    "Furniture.Containers"
+  ],
+  "Icon": "Icons/ItemsGenerated/StorageHeart_Heart.png",
+  "Recipe": {
+    "TimeSeconds": 3,
+    "KnowledgeRequired": false,
+    "Input": [
+      {
+        "ItemId": "Ingredient_Bar_Iron",
+        "Quantity": 10
+      },
+      {
+        "ResourceTypeId": "Wood_Planks",
+        "Quantity": 15
+      }
+    ],
+    "BenchRequirement": [
+      {
+        "Type": "Crafting",
+        "Categories": [
+          "Workbench_Crafting"
+        ],
+        "Id": "Workbench"
+      }
+    ]
+  },
+  "BlockType": {
+    "Material": "Solid",
+    "DrawType": "Cube",
+    "Opacity": "Transparent",
+    "HitboxType": "Full",
+    "Flags": {},
+    "Gathering": {
+      "Breaking": {
+        "GatherType": "Rocks"
+      }
+    },
+    "BlockParticleSetId": "Crystal",
+    "BlockSoundSetId": "Crystal",
+    "PhysicalMaterialId": "Stone",
+    "ParticleColor": "#245bc1",
+    "Textures": [
+      {
+        "Sides": "BlockTextures/StorageHeart/Heart_Side.png",
+        "UpDown": "BlockTextures/StorageHeart/Heart_Top.png",
+        "Weight": 1
+      }
+    ],
+    "Light": {
+      "Color": "#8ae"
+    },
+    "InteractionHint": "server.interactionHints.openDoor",
+    "Interactions": {
+      "Use": "Open_Container"
+    },
+    "BlockEntity": {
+      "Components": {
+        "ItemContainerBlock": {
+          "Capacity": 9
+        }
+      }
+    },
+    "TextureComputedColor": "#405FB0"
+  }
+}

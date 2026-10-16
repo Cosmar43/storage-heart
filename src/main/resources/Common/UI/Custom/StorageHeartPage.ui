@@ -1,0 +1,217 @@
+Group {
+  LayoutMode: Center;
+
+  Group #Panel {
+    Anchor: (Width: 1000, Height: 620);
+    LayoutMode: Top;
+    Background: (Color: #101418);
+    Padding: 12;
+
+    Label #Title {
+      Style: (FontSize: 20, TextColor: #ffd75e, RenderBold: true, HorizontalAlignment: Center);
+      Text: "Storage Heart";
+    }
+
+    Group {
+      LayoutMode: Left;
+      Anchor: (Bottom: 8);
+
+      TextField #SearchField {
+        Anchor: (Width: 340, Height: 38, Right: 6);
+        Padding: (Horizontal: 10);
+        PlaceholderText: "Search network and inventory...";
+      }
+    }
+
+    Group {
+      LayoutMode: Left;
+      Anchor: (Bottom: 8);
+
+      Button #DepositBtn {
+        Anchor: (Right: 6);
+        Padding: (Full: 6);
+        Style: (
+          Default: (Background: #232c38),
+          Hovered: (Background: #33445a),
+          Pressed: (Background: #1a2230),
+          Disabled: (Background: #1a1e24)
+        );
+        Label #DepositLbl {
+          Text: "Deposit all";
+        }
+      }
+
+      Button #QuickBtn {
+        Anchor: (Right: 6);
+        Padding: (Full: 6);
+        Style: (
+          Default: (Background: #232c38),
+          Hovered: (Background: #33445a),
+          Pressed: (Background: #1a2230),
+          Disabled: (Background: #1a1e24)
+        );
+        Label #QuickLbl {
+          Text: "Deposit matching";
+        }
+      }
+
+      Button #HandBtn {
+        Anchor: (Right: 6);
+        Padding: (Full: 6);
+        Style: (
+          Default: (Background: #232c38),
+          Hovered: (Background: #33445a),
+          Pressed: (Background: #1a2230),
+          Disabled: (Background: #1a1e24)
+        );
+        Label #HandLbl {
+          Text: "Deposit held";
+        }
+      }
+
+      Button #CleanBtn {
+        Anchor: (Right: 6);
+        Padding: (Full: 6);
+        Style: (
+          Default: (Background: #232c38),
+          Hovered: (Background: #33445a),
+          Pressed: (Background: #1a2230),
+          Disabled: (Background: #1a1e24)
+        );
+        Label #CleanLbl {
+          Text: "Clean broken";
+        }
+      }
+    }
+
+    Group {
+      Anchor: (Height: 9);
+      Group {
+        Anchor: (Height: 1, Top: 4);
+        Background: #252f3a;
+      }
+    }
+
+    Group {
+      LayoutMode: Left;
+
+      Group {
+        FlexWeight: 1;
+        LayoutMode: Top;
+        Padding: (Right: 6);
+
+        Label #RedCount {
+          Style: (FontSize: 14, TextColor: #ffd75e, RenderBold: true, HorizontalAlignment: Center);
+          Text: "";
+        }
+
+        Group #RedList {
+          LayoutMode: Top;
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Top: 4);
+
+          Button #PrevRedBtn {
+            Anchor: (Right: 6);
+            Padding: (Full: 6);
+            Style: (
+              Default: (Background: #232c38),
+              Hovered: (Background: #33445a),
+              Pressed: (Background: #1a2230),
+              Disabled: (Background: #1a1e24)
+            );
+            Label #PrevRedLbl {
+              Text: "Previous";
+            }
+          }
+
+          Button #NextRedBtn {
+            Padding: (Full: 6);
+            Style: (
+              Default: (Background: #232c38),
+              Hovered: (Background: #33445a),
+              Pressed: (Background: #1a2230),
+              Disabled: (Background: #1a1e24)
+            );
+            Label #NextRedLbl {
+              Text: "Next";
+            }
+          }
+        }
+      }
+
+      Group {
+        FlexWeight: 1;
+        LayoutMode: Top;
+        Padding: (Left: 6);
+
+        Label #InvCount {
+          Style: (FontSize: 14, TextColor: #7ec8ff, RenderBold: true, HorizontalAlignment: Center);
+          Text: "";
+        }
+
+        Group #InvList {
+          LayoutMode: Top;
+        }
+
+        Group {
+          LayoutMode: Left;
+          Anchor: (Top: 4);
+
+          Button #PrevInvBtn {
+            Anchor: (Right: 6);
+            Padding: (Full: 6);
+            Style: (
+              Default: (Background: #232c38),
+              Hovered: (Background: #33445a),
+              Pressed: (Background: #1a2230),
+              Disabled: (Background: #1a1e24)
+            );
+            Label #PrevInvLbl {
+              Text: "Previous";
+            }
+          }
+
+          Button #NextInvBtn {
+            Padding: (Full: 6);
+            Style: (
+              Default: (Background: #232c38),
+              Hovered: (Background: #33445a),
+              Pressed: (Background: #1a2230),
+              Disabled: (Background: #1a1e24)
+            );
+            Label #NextInvLbl {
+              Text: "Next";
+            }
+          }
+        }
+      }
+    }
+
+    Label #DebugList {
+      Style: (FontSize: 13, TextColor: #aaaaaa, Wrap: true);
+      Text: "";
+    }
+
+    Label #HintLbl {
+      Style: (FontSize: 12, TextColor: #888888);
+      Text: "Tip: @mod filters by mod · F opens · Esc closes";
+    }
+
+    Button #CloseBtn {
+      Padding: (Full: 6);
+      Anchor: (Top: 8);
+      Style: (
+        Default: (Background: #232c38),
+        Hovered: (Background: #33445a),
+        Pressed: (Background: #1a2230),
+        Disabled: (Background: #1a1e24)
+      );
+      Label #CloseLbl {
+        Text: "Close";
+      }
+    }
+  }
+}

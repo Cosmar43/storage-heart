@@ -1,0 +1,59 @@
+Group {
+  LayoutMode: Top;
+  Anchor: (Bottom: 4);
+
+  Group {
+    LayoutMode: Left;
+    Padding: (Horizontal: 6);
+
+    ItemSlot #Icon {
+      Anchor: (Width: 44, Height: 44, Right: 6);
+      ShowQualityBackground: true;
+      ShowQuantity: false;
+    }
+
+    Label #Name {
+      FlexWeight: 1;
+      Style: (FontSize: 13, TextColor: #ffffff, VerticalAlignment: Center);
+      Text: "";
+    }
+
+    Label #Qty {
+      Anchor: (Right: 6);
+      Style: (FontSize: 14, TextColor: #ffd75e, RenderBold: true, VerticalAlignment: Center);
+      Text: "";
+    }
+
+    Button #Get {
+      Anchor: (Right: 6);
+      Padding: (Full: 6);
+      Style: (
+        Default: (Background: #232c38),
+        Hovered: (Background: #33445a),
+        Pressed: (Background: #1a2230),
+        Disabled: (Background: #1a1e24)
+      );
+      Label #GetLbl {
+        Text: "Uno";
+      }
+    }
+
+    Button #All {
+      Padding: (Full: 6);
+      Style: (
+        Default: (Background: #232c38),
+        Hovered: (Background: #33445a),
+        Pressed: (Background: #1a2230),
+        Disabled: (Background: #1a1e24)
+      );
+      Label #AllLbl {
+        Text: "Todo";
+      }
+    }
+  }
+
+  Group {
+    Anchor: (Height: 1, Top: 4);
+    Background: #252f3a;
+  }
+}

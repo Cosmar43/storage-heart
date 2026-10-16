@@ -1,0 +1,31 @@
+# Hytale plugin (manual javac build)
+build/
+dist/
+data/
+out/
+
+# Java / Gradle
+*.class
+*.jar
+!.gradle-wrapper.jar
+.gradle/
+gradle-app.setting
+!gradle-wrapper.properties
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Mod runtime data (world saves, links)
+*.json
+!src/**/*.json
+!**/manifest.json

@@ -1,0 +1,16 @@
+{
+  "Group": "com.storageheart",
+  "Name": "StorageHeart",
+  "Version": "1.0.0",
+  "Description": "Central chest with unified access to all your chests, Magic Storage style. Deposit all, search, sort and withdraw.",
+  "Authors": [
+    {
+      "Name": "Cosmar43"
+    }
+  ],
+  "Website": "https://github.com/Cosmar43/storage-heart",
+  "Main": "com.storageheart.StorageHeartPlugin",
+  "ServerVersion": "=0.7.2",
+  "DisabledByDefault": false,
+  "IncludesAssetPack": true
+}

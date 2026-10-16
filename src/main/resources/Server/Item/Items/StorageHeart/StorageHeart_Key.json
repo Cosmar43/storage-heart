@@ -1,0 +1,58 @@
+{
+  "TranslationProperties": {
+    "Name": "Heart Key",
+    "Description": "Links chests to the Heart (F with the key in hand)"
+  },
+  "Categories": [
+    "Items.Ingredients"
+  ],
+  "ItemLevel": 20,
+  "Quality": "Uncommon",
+  "Model": "Items/Events/Coffer_Key.blockymodel",
+  "Texture": "Items/StorageHeart/StorageHeart_Key_Texture.png",
+  "Icon": "Icons/ItemsGenerated/StorageHeart_Key.png",
+  "Animation": "Items/Events/Coffer_Key_Floating.blockyanim",
+  "PlayerAnimationsId": "Item",
+  "IconProperties": {
+    "Scale": 0.5,
+    "Rotation": [
+      22.5,
+      45,
+      22.5
+    ],
+    "Translation": [
+      0,
+      -15
+    ]
+  },
+  "Tags": {
+    "Type": [
+      "Ingredient"
+    ]
+  },
+  "ItemSoundSetId": "ISS_Items_Ingots",
+  "DropOnDeath": true,
+  "Recipe": {
+    "TimeSeconds": 2,
+    "KnowledgeRequired": false,
+    "Input": [
+      {
+        "ItemId": "Ingredient_Bar_Copper",
+        "Quantity": 3
+      },
+      {
+        "ItemId": "Ingredient_Bar_Iron",
+        "Quantity": 1
+      }
+    ],
+    "BenchRequirement": [
+      {
+        "Type": "Crafting",
+        "Categories": [
+          "Workbench_Crafting"
+        ],
+        "Id": "Workbench"
+      }
+    ]
+  }
+}
