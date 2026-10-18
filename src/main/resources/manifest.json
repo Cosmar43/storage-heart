@@ -1,7 +1,7 @@
 {
   "Group": "com.storageheart",
   "Name": "StorageHeart",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
   "Description": "Central chest with unified access to all your chests, Magic Storage style. Deposit all, search, sort and withdraw.",
   "Authors": [
     {

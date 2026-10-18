@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'com.storageheart'
-version = '1.0.0'
+version = '1.1.0'
 description = 'Corazon de almacenamiento central estilo Magic Storage para Hytale (Update 7 / 0.7.x)'
 
 java {
@@ -20,9 +20,12 @@ repositories {
     }
 }
 
+def hytaleVersion = providers.gradleProperty('hytaleVersion').get()
+
 dependencies {
     // El servidor esta disponible en runtime. No empaquetarlo.
-    compileOnly('com.hypixel.hytale:Server:+')
+    // Version fijada en gradle.properties (no usar '+').
+    compileOnly("com.hypixel.hytale:Server:${hytaleVersion}")
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -32,7 +35,6 @@ tasks.withType(JavaCompile).configureEach {
 
 jar {
     archiveBaseName = 'StorageHeart'
-    from('src/main/resources') {
-        include 'manifest.json'
-    }
+    // src/main/resources ya entra por processResources; evita duplicados.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

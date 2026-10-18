@@ -1,216 +1,281 @@
+// StorageHeart — Hytale container-style UI.
+// Reuses the default container textures/styles from Common/UI/Custom/Common.
+@LabelStyle = LabelStyle(FontSize: 16, TextColor: #96a9be);
+@SmallLabelStyle = LabelStyle(FontSize: 13, TextColor: #96a9be);
+@HintStyle = LabelStyle(FontSize: 12, TextColor: #7f8b99);
+@TitleStyle = LabelStyle(
+  FontSize: 17,
+  FontName: "Secondary",
+  RenderBold: true,
+  RenderUppercase: true,
+  TextColor: #d6e0e2,
+  HorizontalAlignment: Center,
+  VerticalAlignment: Center,
+  LetterSpacing: 0
+);
+@CoordsStyle = LabelStyle(
+  FontSize: 12,
+  TextColor: #96a9be,
+  HorizontalAlignment: End,
+  VerticalAlignment: Center
+);
+@ColumnTitle = LabelStyle(
+  FontSize: 15,
+  RenderBold: true,
+  RenderUppercase: true,
+  HorizontalAlignment: Center,
+  VerticalAlignment: Center
+);
+
+@ButtonLabel = LabelStyle(
+  FontSize: 14,
+  TextColor: #bdcbd3,
+  RenderBold: true,
+  RenderUppercase: true,
+  HorizontalAlignment: Center,
+  VerticalAlignment: Center,
+  ShrinkTextToFit: true,
+  MinShrinkTextToFitFontSize: 10
+);
+
+@SecondaryButton = ButtonStyle(
+  Default: (Background: PatchStyle(TexturePath: "Common/Buttons/Secondary.png", Border: 12)),
+  Hovered: (Background: PatchStyle(TexturePath: "Common/Buttons/Secondary_Hovered.png", Border: 12)),
+  Pressed: (Background: PatchStyle(TexturePath: "Common/Buttons/Secondary_Pressed.png", Border: 12)),
+  Disabled: (Background: PatchStyle(TexturePath: "Common/Buttons/Disabled.png", Border: 12))
+);
+
+@TertiaryButton = ButtonStyle(
+  Default: (Background: PatchStyle(TexturePath: "Common/Buttons/Tertiary.png", Border: 12)),
+  Hovered: (Background: PatchStyle(TexturePath: "Common/Buttons/Tertiary_Hovered.png", Border: 12)),
+  Pressed: (Background: PatchStyle(TexturePath: "Common/Buttons/Tertiary_Pressed.png", Border: 12)),
+  Disabled: (Background: PatchStyle(TexturePath: "Common/Buttons/Disabled.png", Border: 12))
+);
+
+@CloseButtonStyle = ButtonStyle(
+  Default: (Background: "Common/ContainerCloseButton.png"),
+  Hovered: (Background: "Common/ContainerCloseButtonHovered.png"),
+  Pressed: (Background: "Common/ContainerCloseButtonPressed.png")
+);
+
+@InputStyle = InputFieldStyle();
+@PlaceholderStyle = InputFieldStyle(TextColor: #6e7da1);
+
 Group {
-  LayoutMode: Center;
+  LayoutMode: Middle;
+  Background: #000000(0.45);
 
   Group #Panel {
-    Anchor: (Width: 1000, Height: 620);
-    LayoutMode: Top;
-    Background: (Color: #101418);
-    Padding: 12;
+    Anchor: (Width: 1000, Height: 660);
+    LayoutMode: Full;
 
-    Label #Title {
-      Style: (FontSize: 20, TextColor: #ffd75e, RenderBold: true, HorizontalAlignment: Center);
-      Text: "Storage Heart";
-    }
+    Group #TitleBar {
+      Anchor: (Height: 38, Top: 0, Left: 0, Right: 0);
+      LayoutMode: Full;
+      Background: (TexturePath: "Common/ContainerHeader.png", HorizontalBorder: 50, VerticalBorder: 0);
+      Padding: (Top: 7);
 
-    Group {
-      LayoutMode: Left;
-      Anchor: (Bottom: 8);
+      Group #TopDecorationContainer {
+        Anchor: (Height: 11, Top: -12, Left: 0, Right: 0);
+        LayoutMode: Center;
 
-      TextField #SearchField {
-        Anchor: (Width: 340, Height: 38, Right: 6);
-        Padding: (Horizontal: 10);
-        PlaceholderText: "Search network and inventory...";
-      }
-    }
-
-    Group {
-      LayoutMode: Left;
-      Anchor: (Bottom: 8);
-
-      Button #DepositBtn {
-        Anchor: (Right: 6);
-        Padding: (Full: 6);
-        Style: (
-          Default: (Background: #232c38),
-          Hovered: (Background: #33445a),
-          Pressed: (Background: #1a2230),
-          Disabled: (Background: #1a1e24)
-        );
-        Label #DepositLbl {
-          Text: "Deposit all";
+        Group #ContainerDecorationTop {
+          Anchor: (Width: 236, Height: 11);
+          Background: "Common/ContainerDecorationTop.png";
         }
       }
 
-      Button #QuickBtn {
-        Anchor: (Right: 6);
-        Padding: (Full: 6);
-        Style: (
-          Default: (Background: #232c38),
-          Hovered: (Background: #33445a),
-          Pressed: (Background: #1a2230),
-          Disabled: (Background: #1a1e24)
-        );
-        Label #QuickLbl {
-          Text: "Deposit matching";
-        }
+      Label #TitleLabel {
+        Anchor: (Full: 0);
+        Style: @TitleStyle;
+        Text: "Storage Heart";
       }
 
-      Button #HandBtn {
-        Anchor: (Right: 6);
-        Padding: (Full: 6);
-        Style: (
-          Default: (Background: #232c38),
-          Hovered: (Background: #33445a),
-          Pressed: (Background: #1a2230),
-          Disabled: (Background: #1a1e24)
-        );
-        Label #HandLbl {
-          Text: "Deposit held";
-        }
-      }
-
-      Button #CleanBtn {
-        Anchor: (Right: 6);
-        Padding: (Full: 6);
-        Style: (
-          Default: (Background: #232c38),
-          Hovered: (Background: #33445a),
-          Pressed: (Background: #1a2230),
-          Disabled: (Background: #1a1e24)
-        );
-        Label #CleanLbl {
-          Text: "Clean broken";
-        }
+      Label #CoordsLabel {
+        Anchor: (Left: 640, Right: 48, Top: 10, Height: 18);
+        Style: @CoordsStyle;
+        Text: "";
       }
     }
 
-    Group {
-      Anchor: (Height: 9);
-      Group {
-        Anchor: (Height: 1, Top: 4);
-        Background: #252f3a;
-      }
-    }
+    Group #Content {
+      LayoutMode: Top;
+      Anchor: (Top: 38, Bottom: 0, Left: 0, Right: 0);
+      Padding: (Full: 14);
+      Background: (TexturePath: "Common/ContainerPatch.png", Border: 23);
 
-    Group {
-      LayoutMode: Left;
+      Group #Toolbar {
+        LayoutMode: Left;
+        Anchor: (Height: 38, Bottom: 10);
 
-      Group {
-        FlexWeight: 1;
-        LayoutMode: Top;
-        Padding: (Right: 6);
-
-        Label #RedCount {
-          Style: (FontSize: 14, TextColor: #ffd75e, RenderBold: true, HorizontalAlignment: Center);
-          Text: "";
-        }
-
-        Group #RedList {
-          LayoutMode: Top;
+        TextField #SearchField {
+          Anchor: (Width: 340, Height: 38);
+          Background: (TexturePath: "Common/InputBox.png", Border: 16);
+          Style: @InputStyle;
+          PlaceholderStyle: @PlaceholderStyle;
+          Padding: (Horizontal: 10);
+          PlaceholderText: "Search network and inventory...";
         }
 
         Group {
-          LayoutMode: Left;
-          Anchor: (Top: 4);
+          FlexWeight: 1;
+        }
 
-          Button #PrevRedBtn {
-            Anchor: (Right: 6);
-            Padding: (Full: 6);
-            Style: (
-              Default: (Background: #232c38),
-              Hovered: (Background: #33445a),
-              Pressed: (Background: #1a2230),
-              Disabled: (Background: #1a1e24)
-            );
-            Label #PrevRedLbl {
-              Text: "Previous";
-            }
+        Button #DepositBtn {
+          Anchor: (Top: 3, Right: 6, Height: 32);
+          Padding: (Horizontal: 12);
+          Style: @SecondaryButton;
+          Label #DepositLbl {
+            Style: @ButtonLabel;
+            Text: "Deposit all";
           }
+        }
 
-          Button #NextRedBtn {
-            Padding: (Full: 6);
-            Style: (
-              Default: (Background: #232c38),
-              Hovered: (Background: #33445a),
-              Pressed: (Background: #1a2230),
-              Disabled: (Background: #1a1e24)
-            );
-            Label #NextRedLbl {
-              Text: "Next";
-            }
+        Button #QuickBtn {
+          Anchor: (Top: 3, Right: 6, Height: 32);
+          Padding: (Horizontal: 12);
+          Style: @SecondaryButton;
+          Label #QuickLbl {
+            Style: @ButtonLabel;
+            Text: "Deposit matching";
+          }
+        }
+
+        Button #HandBtn {
+          Anchor: (Top: 3, Right: 6, Height: 32);
+          Padding: (Horizontal: 12);
+          Style: @SecondaryButton;
+          Label #HandLbl {
+            Style: @ButtonLabel;
+            Text: "Deposit held";
+          }
+        }
+
+        Button #CleanBtn {
+          Anchor: (Top: 3, Right: 6, Height: 32);
+          Padding: (Horizontal: 12);
+          Style: @TertiaryButton;
+          Label #CleanLbl {
+            Style: @ButtonLabel;
+            Text: "Clean broken";
           }
         }
       }
 
-      Group {
-        FlexWeight: 1;
-        LayoutMode: Top;
-        Padding: (Left: 6);
+      Group #Columns {
+        LayoutMode: Left;
+        Anchor: (Height: 420);
 
-        Label #InvCount {
-          Style: (FontSize: 14, TextColor: #7ec8ff, RenderBold: true, HorizontalAlignment: Center);
-          Text: "";
-        }
-
-        Group #InvList {
+        Group #RedColumn {
+          FlexWeight: 1;
           LayoutMode: Top;
-        }
+          Anchor: (Right: 6);
+          Background: (TexturePath: "Common/ContainerPanelPatch.png", Border: 4);
+          Padding: (Full: 10);
 
-        Group {
-          LayoutMode: Left;
-          Anchor: (Top: 4);
-
-          Button #PrevInvBtn {
-            Anchor: (Right: 6);
-            Padding: (Full: 6);
-            Style: (
-              Default: (Background: #232c38),
-              Hovered: (Background: #33445a),
-              Pressed: (Background: #1a2230),
-              Disabled: (Background: #1a1e24)
-            );
-            Label #PrevInvLbl {
-              Text: "Previous";
-            }
+          Label #RedCount {
+            Style: (...@ColumnTitle, TextColor: #E8A93B);
+            Text: "";
           }
 
-          Button #NextInvBtn {
-            Padding: (Full: 6);
-            Style: (
-              Default: (Background: #232c38),
-              Hovered: (Background: #33445a),
-              Pressed: (Background: #1a2230),
-              Disabled: (Background: #1a1e24)
-            );
-            Label #NextInvLbl {
-              Text: "Next";
+          Group #RedList {
+            LayoutMode: Top;
+          }
+
+          Group #RedPager {
+            LayoutMode: Left;
+            Anchor: (Top: 6);
+
+            Button #PrevRedBtn {
+              Anchor: (Right: 6, Height: 28);
+              Padding: (Horizontal: 10);
+              Style: @TertiaryButton;
+              Label #PrevRedLbl {
+                Style: @ButtonLabel;
+                Text: "Previous";
+              }
+            }
+
+            Button #NextRedBtn {
+              Anchor: (Height: 28);
+              Padding: (Horizontal: 10);
+              Style: @TertiaryButton;
+              Label #NextRedLbl {
+                Style: @ButtonLabel;
+                Text: "Next";
+              }
+            }
+          }
+        }
+
+        Group #InvColumn {
+          FlexWeight: 1;
+          LayoutMode: Top;
+          Anchor: (Left: 6);
+          Background: (TexturePath: "Common/ContainerPanelPatch.png", Border: 4);
+          Padding: (Full: 10);
+
+          Label #InvCount {
+            Style: (...@ColumnTitle, TextColor: #7a9cc6);
+            Text: "";
+          }
+
+          Group #InvList {
+            LayoutMode: Top;
+          }
+
+          Group #InvPager {
+            LayoutMode: Left;
+            Anchor: (Top: 6);
+
+            Button #PrevInvBtn {
+              Anchor: (Right: 6, Height: 28);
+              Padding: (Horizontal: 10);
+              Style: @TertiaryButton;
+              Label #PrevInvLbl {
+                Style: @ButtonLabel;
+                Text: "Previous";
+              }
+            }
+
+            Button #NextInvBtn {
+              Anchor: (Height: 28);
+              Padding: (Horizontal: 10);
+              Style: @TertiaryButton;
+              Label #NextInvLbl {
+                Style: @ButtonLabel;
+                Text: "Next";
+              }
             }
           }
         }
       }
+
+      Label #DebugList {
+        Style: (...@SmallLabelStyle, Wrap: true);
+        Anchor: (Top: 6);
+        Text: "";
+      }
+
+      Label #HintLbl {
+        Style: @HintStyle;
+        Anchor: (Top: 4);
+        Text: "Tip: @mod filter · F opens · Esc closes · Ctrl+F with key unlinks";
+      }
     }
 
-    Label #DebugList {
-      Style: (FontSize: 13, TextColor: #aaaaaa, Wrap: true);
-      Text: "";
+    Button #CloseButton {
+      Anchor: (Width: 32, Height: 32, Top: -8, Right: -8);
+      Style: @CloseButtonStyle;
     }
 
-    Label #HintLbl {
-      Style: (FontSize: 12, TextColor: #888888);
-      Text: "Tip: @mod filters by mod · F opens · Esc closes";
-    }
+    Group #BottomDecorationContainer {
+      Anchor: (Height: 11, Bottom: -6, Left: 0, Right: 0);
+      LayoutMode: Center;
 
-    Button #CloseBtn {
-      Padding: (Full: 6);
-      Anchor: (Top: 8);
-      Style: (
-        Default: (Background: #232c38),
-        Hovered: (Background: #33445a),
-        Pressed: (Background: #1a2230),
-        Disabled: (Background: #1a1e24)
-      );
-      Label #CloseLbl {
-        Text: "Close";
+      Group #ContainerDecorationBottom {
+        Anchor: (Width: 236, Height: 11);
+        Background: "Common/ContainerDecorationBottom.png";
       }
     }
   }

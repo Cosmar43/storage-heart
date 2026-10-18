@@ -2,6 +2,7 @@ package com.storageheart.core;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -13,6 +14,9 @@ import java.util.Set;
  *
  * <p>Formato de persistencia (JSON manual, simétrico escritura/lectura):
  * {@code {"hearts":[{"world":"w","x":1,"y":2,"z":3,"chests":[{"x":..,"y":..,"z":..}]}]}}
+ *
+ * <p>Thread-safe: cada mundo de Hytale corre en su propio hilo y los eventos
+ * de clic pueden llegar en paralelo desde mundos distintos.
  */
 public final class LinkStore {
 
@@ -23,42 +27,46 @@ public final class LinkStore {
         return heart.key();
     }
 
-    public void registerHeart(BlockPos heart) {
+    public synchronized void registerHeart(BlockPos heart) {
         hearts.putIfAbsent(keyOf(heart), heart);
         links.computeIfAbsent(keyOf(heart), k -> new LinkedHashSet<>());
     }
 
-    public boolean link(BlockPos heart, BlockPos chest) {
+    public synchronized boolean link(BlockPos heart, BlockPos chest) {
         registerHeart(heart);
+        if (heart.equals(chest)) {
+            return false; // un Corazón nunca es un cofre de sí mismo
+        }
         return links.get(keyOf(heart)).add(chest);
     }
 
     /** Devuelve true si existía y se quitó. */
-    public boolean unlink(BlockPos heart, BlockPos chest) {
+    public synchronized boolean unlink(BlockPos heart, BlockPos chest) {
         Set<BlockPos> set = links.get(keyOf(heart));
         return set != null && set.remove(chest);
     }
 
-    public boolean isLinked(BlockPos heart, BlockPos chest) {
+    public synchronized boolean isLinked(BlockPos heart, BlockPos chest) {
         Set<BlockPos> set = links.get(keyOf(heart));
         return set != null && set.contains(chest);
     }
 
-    public Set<BlockPos> chestsOf(BlockPos heart) {
+    /** Copia inmutable: quien la recorra no compite con escrituras de otro mundo. */
+    public synchronized Set<BlockPos> chestsOf(BlockPos heart) {
         Set<BlockPos> set = links.get(keyOf(heart));
-        return set == null ? Set.of() : Collections.unmodifiableSet(set);
+        return set == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(set));
     }
 
-    public void dropHeart(BlockPos heart) {
+    public synchronized void dropHeart(BlockPos heart) {
         hearts.remove(keyOf(heart));
         links.remove(keyOf(heart));
     }
 
-    public boolean knowsHeart(BlockPos heart) {
+    public synchronized boolean knowsHeart(BlockPos heart) {
         return hearts.containsKey(keyOf(heart));
     }
 
-    public List<BlockPos> heartsIn(String world) {
+    public synchronized List<BlockPos> heartsIn(String world) {
         List<BlockPos> out = new ArrayList<>();
         for (BlockPos h : hearts.values()) {
             if (h.world().equals(world)) {
@@ -68,7 +76,37 @@ public final class LinkStore {
         return out;
     }
 
-    public String toJson() {
+    public synchronized int heartCount() {
+        return hearts.size();
+    }
+
+    public synchronized int linkCount() {
+        int n = 0;
+        for (Set<BlockPos> set : links.values()) {
+            n += set.size();
+        }
+        return n;
+    }
+
+    /**
+     * Limpia vínculos que apuntan a un corazón (datos viejos de self-link o
+     * de un corazón enlazado como cofre). Devuelve cuántos quitó.
+     */
+    public synchronized int removeHeartLinks() {
+        int removed = 0;
+        for (Set<BlockPos> set : links.values()) {
+            Iterator<BlockPos> it = set.iterator();
+            while (it.hasNext()) {
+                if (hearts.containsKey(it.next().key())) {
+                    it.remove();
+                    removed++;
+                }
+            }
+        }
+        return removed;
+    }
+
+    public synchronized String toJson() {
         StringBuilder sb = new StringBuilder("{\"hearts\":[");
         boolean first = true;
         for (BlockPos heart : hearts.values()) {
@@ -82,7 +120,7 @@ public final class LinkStore {
                     .append(",\"z\":").append(heart.z())
                     .append(",\"chests\":[");
             boolean fc = true;
-            for (BlockPos c : chestsOf(heart)) {
+            for (BlockPos c : links.getOrDefault(keyOf(heart), Set.of())) {
                 if (!fc) {
                     sb.append(',');
                 }
@@ -97,7 +135,7 @@ public final class LinkStore {
     }
 
     /** Lee lo que escribe {@link #toJson}. Entradas malformadas se saltan. */
-    public void fromJson(String json) {
+    public synchronized void fromJson(String json) {
         hearts.clear();
         links.clear();
         if (json == null) {

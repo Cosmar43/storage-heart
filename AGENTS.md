@@ -4,7 +4,41 @@
 > unificado a toda la red de almacenamiento. Llave + F para vincular,
 > interfaz propia con buscador.
 
-## 1. Estado actual (v1.0.0, server 0.7.2) — 17 oct 2026, PUBLICADO
+## 1. Estado actual (v1.1.0, server 0.7.2) — 18 oct 2026, PUBLICADO
+
+- **v1.1.0 (bugfix):** variantes reales (metadata/durabilidad/calidad) al
+  retirar; desvincular = **Ctrl+F con la llave** (sin modo, F abre el cofre
+  vanilla); la llave ya no bloquea usos ajenos; corazones obsoletos ignorados;
+  self-link prohibido y limpiado al cargar; LinkStore sincronizado + guardado
+  atómico con `.bak`; contador de cofres correcto; acciones de UI por
+  `Variant` estable; rango de 10 bloques mientras la página está abierta;
+  tope de cofres al mover; `Deposit matching` no toca llave/corazón; `Clean
+  broken` pide confirmación; `Deposit held` usa el slot activo de la hotbar.
+- **Sin parpadeo del cofre vanilla:** `UseBlockPreSystem`
+  (`EntityEventSystem<EntityStore, UseBlockEvent.Pre>`) cancela `Open_Container`
+  antes de que se ejecute; la página custom abre al instante. El evento global
+  `LivingEntityUseBlockEvent` queda como respaldo con cierre retardado.
+- **Cerrar con F:** la página usa
+  `CustomPageLifetime.CanDismissOrCloseThroughInteraction`, el mismo lifetime
+  de las páginas vanilla abiertas con `Use` (cofres, barter, lore). F cierra,
+  igual que un cofre; Esc y el botón siguen funcionando.
+- **UI estilo Hytale:** marco `ContainerHeader`/`ContainerPatch`, adornos
+  superior/inferior, botón X, input box y botones secondary/tertiary vanilla;
+  las listas son filas de slots con fondo de calidad.
+- Eliminados: red virtual `StorageNetwork` (muerta), sistemas ECS que nunca
+  recibieron eventos, listener `PlayerInteractEvent` (deprecado) y logs INFO
+  por clic. `build.ps1` funciona en clon limpio y empaqueta todos los
+  resources; Gradle fija `hytaleVersion` y evita el manifest duplicado.
+- **VERIFICADO EN JUEGO** (mundo de pruebas, 18 oct 2026): variantes, Ctrl+F,
+  rango, UI Hytale, coordenadas a la derecha, X arriba a la derecha, cierre
+  con F/Esc/botón, ausencia de la ventana vanilla y confirmación de Clean.
+- Release: https://github.com/Cosmar43/storage-heart/releases/tag/v1.1.0
+  (jar `StorageHeart-1.1.0.jar`, SHA256
+  `67032C42B2547F50F9C49367930D311711F078CD136FB6E1E6DE1DD8B73211D2`).
+- GOTCHA: reemplazar `StorageHeart-*.jar` con Hytale/mundo abierto puede
+  dejar el `PluginClassLoader` inconsistente y lanzar
+  `NoClassDefFoundError: StorageHeart$PageEvent` al abrir la UI. Cerrar el
+  cliente por completo antes de copiar el jar y volver a arrancar.
 
 - v1.0.0 inglés global + MIT + build.ps1 + README EN. Commit `152ca7a` en
   `main`, subido a https://github.com/Cosmar43/storage-heart. Tag `v1.0.0`.
@@ -245,31 +279,27 @@ storage-heart/
   src/main/resources/Common/UI/Custom/StorageHeartPage.ui  layout (ver §8)
   src/main/java/com/storageheart/
     StorageHeartPlugin.java    setup/start/shutdown + registro de eventos +
-                               onEntityUseBlock (raycast) + onMouseButton +
-                               onPlayerInteract + ensureInteract por mundo
+                               onEntityUseBlock (raycast) + onMouseButton
     StorageHeartConfig.java    codec: HeartBlockId, LinkKeyItemId,
                                MaxLinkDistance=32, MaxChestsPerNet=32,
-                               MarkExpirySeconds=30 (vacío = default vanilla)
-    StorageNetworkService.java inventario del jugador (StorageComponent),
-                               give, sort nativo, toStack
-    commands/ — ELIMINADO en 0.21.0 (era /storage; uso solo con items)
-    core/StorageNetwork.java   red virtual pura (lógica + tests javac)
+                               MarkExpirySeconds (legado), SortMode
+    StorageNetworkService.java entrega de items (Player.giveItem); la red es
+                               física (cofres reales)
     core/BlockPos.java         pos mundo+x,y,z, key(), distanceTo()
-    core/LinkStore.java        vínculos + JSON manual (tests javac)
+    core/LinkStore.java        vínculos + JSON manual (tests javac) +
+                               thread-safe + removeHeartLinks()
     link/LinkService.java      handleClick unificado: corazón manda >
-                               cofre+llave > bloque+llave > vanilla;
+                               cofre+llave (F=vanilla sin modo; Ctrl+F=
+                               desvincular) > bloque+llave > vanilla;
                                propose/confirm/forget/purgeDead/chestStatus +
                                deadChestLines + selección persistente
-                               (selected.json) + handleChestUse/unlinkAnywhere
+                               (selected.json) + save atómico + closeWindows
     link/NetworkModel.java     agregado/retirada/depósito sobre cofres reales
-                               (todo/repetidos/mano por hueco) + fillVirtual/
-                               syncBack de repuesto (vía vanilla retirada)
-    link/HeartUseEntitySystem.java + HeartUseChunkSystem.java
-                               sistemas ECS (NUNCA recibieron nada; borrar)
+                               por VARIANTE (id+metadata+durabilidad+calidad)
     ui/StoragePage.java        InteractiveCustomUIPage: buscador (@SearchQuery),
                                filas con iconos (Barter-style `#Lista[i] #X`),
-                               Sacar/Todo, depositar, espejo ItemGrid + bandeja
-                               (mudos: E1b-negativo), F=abrir/Esc=cerrar
+                               Sacar/Todo, depositar, variantes, rango 8 bl.,
+                               confirmación de Clean broken
   src/main/resources/Common/UI/Custom/StorageHeartPage.ui + Pages/StorageHeartRow.ui
   src/main/resources/Server/Item/Items/StorageHeart/StorageHeart_Heart.json
                                bloque propio (cubo cristal + Use:Open_Container)
@@ -321,7 +351,10 @@ storage-heart/
   `InteractiveCustomUIPage<T>` + codec (claves en MAYÚSCULA), builders en
   `...ui.builder` (`UICommandBuilder`, `UIEventBuilder`, `EventData`),
   `CustomUIEventBindingType` (Activating/ValueChanged/...),
-  `CustomPageLifetime.CanDismiss`. `sendUpdate(cmd, ev, clear)` es protected
+  `CustomPageLifetime.CanDismiss` y, en 1.1.0,
+  `CanDismissOrCloseThroughInteraction` (cierra con F; es el lifetime de las
+  páginas vanilla abiertas con Use: BlockLorePage/BarterPage/RespawnPointPage).
+  `sendUpdate(cmd, ev, clear)` es protected
   (OK desde subclase). NO existen `close()` ni `rebuild()` (cerrar con
   `PageManager.closePage`).
 - Documentos `.ui` se citan relativos a `Common/UI/Custom/`:
@@ -347,7 +380,9 @@ storage-heart/
   ~3 s. `setPageWithWindows(Page.Bench, ContainerBlockWindow)` sí mostraba
   (pero rejilla fija sin scroll/búsqueda: topó en 54).
 - Cierres: `Dismissing` no llega; `CantClose` quita Esc (molesto, revertido).
-  Con página abierta la F no llega al servidor → F=abrir, Esc/botón=cerrar.
+  **RESUELTO en 1.1.0:** `CanDismissOrCloseThroughInteraction` permite cerrar
+  con F (como un cofre vanilla) sin depender de `Dismissing`; Esc y el botón
+  siguen funcionando.
 - Ashe validación: interacción inexistente en JSON = mod rechazado entero
   (`Asset validation FAILED`). Solo ideas que validen.
 
@@ -388,11 +423,11 @@ storage-heart/
 3. **Ventana compuesta: QUITADA en 0.16.0** (invisible en cliente, muerte a
    los ~3 s, cero valor). Página custom sola. Reabrir solo con ejemplo que
    la pinte en 0.7.2.
-4. **Deuda previa sin tocar:** cristal como corazón descartado (sin `Use` no
-   hay evento); `LivingEntityUseBlockEvent(forRemoval)` → migrar a
-   `UseBlockEvent$Pre` si algún día llega a plugins; quitar sistemas ECS
-   muertos; Gradle wrapper; `LinkStore` sin sincronizar; recetas del Corazón
-   (hoy solo `/storage kit`); guía Asset Editor desactualizada.
+4. **Deuda previa resuelta en 1.1.0:** eliminados los sistemas ECS muertos,
+   `PlayerInteractEvent` y la red virtual; `LinkStore` sincronizado y guardado
+   atómico; `build.ps1` funciona en clon limpio. Queda pendiente: Gradle
+   wrapper real, probar `UseBlockEvent$Pre` (sustituiría el raycast y el
+   cierre retardado) y proteger redes en servidores públicos (ownership).
 
 ## 12. Sesión 15 oct tarde-noche (resumen para retomar)
 
@@ -402,6 +437,7 @@ storage-heart/
 - 0.10.x: toggle-F imposible (con página abierta la F no llega al servidor;
   sin KeyDown vanilla que copiar) → contrato F=abrir, Esc/botón=cerrar.
   `Dismissing` no llega; `CantClose` probado y revertido (molesto).
+  **RESUELTO en 1.1.0** con `CustomPageLifetime.CanDismissOrCloseThroughInteraction`.
   Interacción inexistente en JSON = mod rechazado por el validador (probar
   solo ideas válidas contra `AssetStore`).
 - 0.11–0.13: `ItemGrid` renderiza (slots+fondo+scroll) pero mudo; `SlotIndex`

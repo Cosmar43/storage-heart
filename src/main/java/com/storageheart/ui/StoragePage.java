@@ -22,23 +22,27 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.storageheart.StorageHeartPlugin;
 import com.storageheart.StorageNetworkService;
 import com.storageheart.core.BlockPos;
-import com.storageheart.core.StorageNetwork;
 import com.storageheart.link.NetworkModel;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.logging.Level;
 
 /**
  * Interfaz del Corazón: buscador + rejilla paginada + depositar/todo.
  *
- * <p>Escribe en los cofres en vivo (sin sync al cerrar). La lista se
- * reconstruye en cada acción con `sendUpdate`.
+ * <p>Trabaja con VARIANTES reales (id + metadata + durabilidad + calidad):
+ * retirar una espada dañada devuelve exactamente esa espada, no una nueva.
+ * La lista se reconstruye en cada acción con {@code sendUpdate}.
  */
 public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageEvent> {
 
     private static final int ROWS_PER_PAGE = 6;
+    private static final double MAX_USE_DISTANCE = 10.0;
 
     private final StorageHeartPlugin plugin;
     private final PlayerRef player;
@@ -47,17 +51,18 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
     private String query = "";
     private int pageRed = 0;
     private int pageInv = 0;
-    private List<StorageNetwork.Entry> rows = List.of();
+    private List<NetworkModel.Entry> rows = List.of();
     private boolean loggedEvent;
     private boolean loggedLang;
+    private boolean closedForDistance;
+    private long cleanArmedUntil;
 
     public StoragePage(PlayerRef playerRef, StorageHeartPlugin plugin, String worldName, BlockPos heart) {
-        // CanDismiss (Esc funciona) + F = abrir siempre. F-cerrar es
-        // inimplementable: con la página abierta la F no llega al servidor
-        // (cero líneas Use con página abierta en todos los logs; ningún
-        // KeyDown/Focus consumido por vanilla que copiar). El interruptor
-        // clásico cerraba lo recién abierto por rastreo obsoleto.
-        super(playerRef, CustomPageLifetime.CanDismiss, PageEvent.CODEC);
+        // CanDismiss (Esc) + CanDismissOrCloseThroughInteraction: la misma
+        // tecla de interacción (F) cierra la página, igual que un cofre
+        // vanilla. Es el lifetime que usan BlockLorePage/BarterPage/
+        // RespawnPointPage cuando se abren con Use.
+        super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, PageEvent.CODEC);
         this.plugin = plugin;
         this.player = playerRef;
         this.worldName = worldName;
@@ -67,10 +72,8 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
     @Override
     public void build(Ref<EntityStore> ref, UICommandBuilder commands,
             UIEventBuilder events, Store<EntityStore> store) {
-        // Los documentos se resuelven relativos a Common/UI/Custom/ (igual que
-        // el juego: Common/UI/Custom/Pages/ShopPage.ui se cita como
-        // "Pages/ShopPage.ui"). El prefijo "Custom/" del ejemplo de la wiki no
-        // existe en el cliente y lo desconecta.
+        // Los documentos se resuelven relativos a Common/UI/Custom/.
+        closedForDistance = false;
         commands.append("StorageHeartPage.ui");
         paint(ref, store, commands, events);
         bindStatic(events);
@@ -85,15 +88,8 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
                 EventData.of("Action", "hand"));
         events.addEventBinding(CustomUIEventBindingType.Activating, "#CleanBtn",
                 EventData.of("Action", "clean"));
-        events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseBtn",
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#CloseButton",
                 EventData.of("Action", "close"));
-        // Si el cliente avisa al descartar (Esc), sirve para no dejar rastreo
-        // obsoleto. Se loguea el primer evento para confirmar si llega.
-        try {
-            events.addEventBinding(CustomUIEventBindingType.Dismissing, "#Panel",
-                    EventData.of("Action", "dismiss"));
-        } catch (Exception ignored) {
-        }
         events.addEventBinding(CustomUIEventBindingType.Activating, "#PrevRedBtn",
                 EventData.of("Action", "prevRed"));
         events.addEventBinding(CustomUIEventBindingType.Activating, "#NextRedBtn",
@@ -106,40 +102,45 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
                 EventData.of("Action", "search").append("@SearchQuery", "#SearchField.Value"));
     }
 
-    private List<StorageNetwork.Entry> currentRows(World world) {
-        List<StorageNetwork.Entry> all = NetworkModel.entries(plugin, world, heart);
+    private List<NetworkModel.Entry> currentRows(World world) {
+        List<NetworkModel.Entry> all = NetworkModel.entries(plugin, world, heart);
+        return filterAndSort(all, playerLanguage());
+    }
+
+    /** Filtro y orden compartidos por red e inventario (incluye @mod). */
+    private List<NetworkModel.Entry> filterAndSort(List<NetworkModel.Entry> input, String lang) {
         String raw = query.trim();
-        String lang = playerLanguage();
-        java.util.Map<String, String> seen = new java.util.HashMap<>();
-        java.util.Comparator<StorageNetwork.Entry> alpha = java.util.Comparator.comparing(e -> {
-            String vis = seen.computeIfAbsent(e.itemId(), k -> visibleName(k, lang));
-            return norm(vis != null ? vis : e.itemId());
-        });
+        Map<String, String> names = new HashMap<>();
+        Comparator<NetworkModel.Entry> alpha = Comparator.comparing(e ->
+                names.computeIfAbsent(e.variantId(), k -> norm(visibleName(e, lang))));
+        Comparator<NetworkModel.Entry> order = "cantidad".equalsIgnoreCase(plugin.getConfig().getSortMode())
+                ? Comparator.comparingInt(NetworkModel.Entry::quantity).reversed().thenComparing(alpha)
+                : alpha;
         if (raw.isEmpty()) {
-            java.util.List<StorageNetwork.Entry> out = new java.util.ArrayList<>(all);
-            out.sort(alpha);
+            List<NetworkModel.Entry> out = new ArrayList<>(input);
+            out.sort(order);
             return out;
         }
         String q = norm(raw);
         String mod = q.startsWith("@") ? q.substring(1) : null;
-        java.util.List<StorageNetwork.Entry> out = all.stream().filter(e -> {
+        List<NetworkModel.Entry> out = new ArrayList<>();
+        for (NetworkModel.Entry e : input) {
             String idNorm = norm(e.itemId());
-            if (idNorm.contains(q)) {
-                return true;
-            }
-            if (mod != null) {
+            boolean match = idNorm.contains(q);
+            if (!match && mod != null) {
                 int colon = idNorm.indexOf(':');
                 String ns = colon >= 0 ? idNorm.substring(0, colon) : idNorm;
-                if (ns.contains(mod)) {
-                    return true;
-                }
+                match = ns.contains(mod);
             }
-            // Nombre visible en el idioma del jugador (ya no solo el id).
-            String vis = seen.computeIfAbsent(e.itemId(), k -> visibleName(k, lang));
-            return vis != null && norm(vis).contains(q);
-        }).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-        // Orden alfabético por nombre visible (id si no hay) para escanear.
-        out.sort(alpha);
+            if (!match) {
+                String name = names.computeIfAbsent(e.variantId(), k -> norm(visibleName(e, lang)));
+                match = name.contains(q);
+            }
+            if (match) {
+                out.add(e);
+            }
+        }
+        out.sort(order);
         return out;
     }
 
@@ -150,7 +151,7 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
             if (l != null && !l.isBlank()) {
                 if (!loggedLang) {
                     loggedLang = true;
-                    plugin.getLogger().at(Level.INFO).log("StorageHeart diag: idioma=" + l);
+                    plugin.getLogger().at(Level.FINE).log("StorageHeart: idioma=" + l);
                 }
                 return l;
             }
@@ -159,12 +160,12 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
         return "en-US";
     }
 
-    /** Nombre visible en el idioma dado (I18n + clave del item; null si no hay). */
-    private String visibleName(String itemId, String lang) {
+    /** Nombre visible de una variante concreta (respeta nombres personalizados). */
+    private String visibleName(NetworkModel.Entry e, String lang) {
         try {
-            Message m = new ItemStack(itemId, 1).getDisplayName();
+            Message m = e.sample().getDisplayName();
             if (m == null) {
-                return null;
+                return e.itemId();
             }
             String key = m.getMessageId();
             if (key != null && !key.isBlank()) {
@@ -189,11 +190,14 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
             }
         } catch (Exception ignored) {
         }
-        return null;
+        return e.itemId();
     }
 
     /** Minúsculas sin tildes para comparar (ids y nombres visibles). */
     private static String norm(String s) {
+        if (s == null) {
+            return "";
+        }
         String n = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "");
         return n.toLowerCase(Locale.ROOT);
@@ -201,66 +205,78 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
 
     private void paint(Ref<EntityStore> ref, Store<EntityStore> store,
             UICommandBuilder commands, UIEventBuilder events) {
-        // Dos columnas simultáneas (estilo cofre vanilla): red + inventario,
-        // cada una con su paginador. Filas Barter: clear + append + set + bind.
         World world = Universe.get().getWorld(worldName);
         rows = world == null ? List.of() : currentRows(world);
-        List<StorageNetwork.Entry> inv = invList(ref, store);
+        List<NetworkModel.Entry> inv = invList(ref, store);
         int pagesRed = Math.max(1, (rows.size() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE);
         int pagesInv = Math.max(1, (inv.size() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE);
         pageRed = Math.min(Math.max(0, pageRed), pagesRed - 1);
         pageInv = Math.min(Math.max(0, pageInv), pagesInv - 1);
         paintList(commands, events, "#RedList", rows, pageRed, "get", "all");
         paintList(commands, events, "#InvList", inv, pageInv, "put", "putall");
-        // Estado compacto: solo estorba si hay muertos o todo vacío.
+
         List<String> dead = world == null ? List.of() : plugin.linkService().deadChestLines(world, heart);
+        int deadCount = dead.size();
+        int ok = world == null ? 0 : NetworkModel.chests(plugin, world, heart).size();
+        int linked = ok + deadCount;
+
         StringBuilder status = new StringBuilder();
+        boolean searching = !query.isBlank();
         if (rows.isEmpty() && inv.isEmpty()) {
-            status.append("(empty: use Deposit all)\n");
+            status.append(searching ? "(no results for this search)\n" : "(empty: use Deposit all)\n");
         } else if (rows.isEmpty()) {
-            status.append("(network empty: add with One/All or Deposit all)\n");
+            status.append(searching ? "(no network results)\n"
+                    : "(network empty: add with One/All or Deposit all)\n");
         } else if (inv.isEmpty()) {
-            status.append("(nothing to take in inventory)\n");
+            status.append(searching ? "(no inventory results)\n"
+                    : "(nothing in inventory to store)\n");
         }
-        if (dead.isEmpty()) {
+        if (deadCount == 0) {
             status.append("All chests responding.");
         } else {
-            for (String line : dead) {
-                status.append("\n").append(line);
+            for (int i = 0; i < Math.min(3, deadCount); i++) {
+                status.append("\n").append(dead.get(i));
             }
-            status.append("\nUse Clean broken.");
+            if (deadCount > 3) {
+                status.append("\n… and ").append(deadCount - 3).append(" more.");
+            }
+            status.append("\nUse Clean broken (press twice to confirm).");
         }
         commands.set("#DebugList.Text", status.toString());
-        int total = world == null ? 0 : NetworkModel.chests(plugin, world, heart).size();
-        commands.set("#RedCount.Text", rows.isEmpty()
-                ? "NETWORK · empty"
-                : "NETWORK · " + (total - dead.size()) + "/" + total + " chests OK · " + rows.size()
-                        + " types · page " + (pageRed + 1) + "/" + pagesRed);
-        commands.set("#InvCount.Text", inv.isEmpty()
-                ? "INVENTORY · empty"
-                : "INVENTORY · " + inv.size() + " types · page " + (pageInv + 1) + "/" + pagesInv);
-        commands.set("#Title.Text", "Heart [" + heart.x() + "," + heart.y() + "," + heart.z() + "]");
+
+        String red = "NETWORK · " + rows.size() + " types · " + ok + "/" + linked + " chests OK";
+        if (pagesRed > 1) {
+            red += " · page " + (pageRed + 1) + "/" + pagesRed;
+        }
+        commands.set("#RedCount.Text", red);
+        String invText = "INVENTORY · " + inv.size() + " types";
+        if (pagesInv > 1) {
+            invText += " · page " + (pageInv + 1) + "/" + pagesInv;
+        }
+        commands.set("#InvCount.Text", invText);
+        commands.set("#TitleLabel.Text", "Storage Heart");
+        commands.set("#CoordsLabel.Text", "Heart [" + heart.x() + "," + heart.y() + "," + heart.z() + "]");
+        commands.set("#CleanLbl.Text", System.currentTimeMillis() < cleanArmedUntil
+                ? "Confirm clean (" + deadCount + ")" : "Clean broken");
     }
 
     /** Pinta una columna de filas (red o inventario) con sus botones. */
     private void paintList(UICommandBuilder commands, UIEventBuilder events, String list,
-            List<StorageNetwork.Entry> entries, int pg, String getAction, String allAction) {
+            List<NetworkModel.Entry> entries, int pg, String getAction, String allAction) {
         commands.clear(list);
         int from = pg * ROWS_PER_PAGE;
         int to = Math.min(from + ROWS_PER_PAGE, entries.size());
         for (int i = from; i < to; i++) {
             int slot = i - from;
-            StorageNetwork.Entry e = entries.get(i);
+            NetworkModel.Entry e = entries.get(i);
             String row = list + "[" + slot + "]";
             commands.append(list, "Pages/StorageHeartRow.ui");
-            // El nombre viaja como Message (clave localizable): el cliente lo
-            // muestra en el idioma del jugador. Pasar String daría el @hash.
             try {
-                Message name = displayName(e.itemId());
-                if (name == null) {
-                    commands.set(row + " #Name.Text", e.itemId());
-                } else {
+                Message name = e.sample().getDisplayName();
+                if (name != null) {
                     commands.set(row + " #Name.Text", name);
+                } else {
+                    commands.set(row + " #Name.Text", e.itemId());
                 }
             } catch (Exception ex) {
                 commands.set(row + " #Name.Text", e.itemId());
@@ -273,16 +289,21 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
             } catch (Exception ex) {
                 plugin.getLogger().at(Level.WARNING).log("StorageHeart: icono falló para " + e.itemId());
             }
+            // Variant es la identidad estable de la pila; Index queda como
+            // respaldo para clientes viejos.
             events.addEventBinding(CustomUIEventBindingType.Activating, row + " #Get",
-                    EventData.of("Action", getAction).append("Index", Integer.toString(i)));
+                    EventData.of("Action", getAction)
+                            .append("Index", Integer.toString(i))
+                            .append("Variant", e.variantId()));
             events.addEventBinding(CustomUIEventBindingType.Activating, row + " #All",
-                    EventData.of("Action", allAction).append("Index", Integer.toString(i)));
+                    EventData.of("Action", allAction)
+                            .append("Index", Integer.toString(i))
+                            .append("Variant", e.variantId()));
         }
     }
 
-    /** Inventario agregado por tipo (almacén+mochila, sin llave/corazón). */
-    private List<StorageNetwork.Entry> invList(Ref<EntityStore> ref, Store<EntityStore> store) {
-        java.util.Map<String, Integer> totals = new java.util.LinkedHashMap<>();
+    /** Inventario agregado por variante (almacén+mochila, sin llave/corazón). */
+    private List<NetworkModel.Entry> invList(Ref<EntityStore> ref, Store<EntityStore> store) {
         try {
             String keyId = plugin.getConfig().getLinkKeyItemId();
             String heartId = plugin.getConfig().getHeartBlockId();
@@ -290,48 +311,26 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
                     store, ref,
                     com.hypixel.hytale.server.core.inventory.InventoryComponent.Storage.getComponentType(),
                     com.hypixel.hytale.server.core.inventory.InventoryComponent.Backpack.getComponentType());
-            for (short s = 0; s < source.getCapacity(); s++) {
-                ItemStack stack = source.getItemStack(s);
-                if (ItemStack.isEmpty(stack)) {
-                    continue;
+            List<ItemStack> stacks = new ArrayList<>();
+            source.forEach((s, stack) -> {
+                if (!ItemStack.isEmpty(stack)
+                        && !keyId.equals(stack.getItemId())
+                        && !heartId.equals(stack.getItemId())) {
+                    stacks.add(stack);
                 }
-                if (keyId.equals(stack.getItemId()) || heartId.equals(stack.getItemId())) {
-                    continue;
-                }
-                totals.merge(stack.getItemId(), stack.getQuantity(), Integer::sum);
-            }
+            });
+            return filterAndSort(NetworkModel.entriesOf(stacks), playerLanguage());
         } catch (Exception ex) {
             plugin.getLogger().at(Level.WARNING).withCause(ex).log("StorageHeart: inventario no leído.");
             return List.of();
         }
-        List<StorageNetwork.Entry> out = new ArrayList<>();
-        totals.forEach((id, qty) -> out.add(new StorageNetwork.Entry(id, qty)));
-        String q = norm(query.trim());
-        String lang = playerLanguage();
-        java.util.Map<String, String> seen = new java.util.HashMap<>();
-        java.util.List<StorageNetwork.Entry> filtered = q.isEmpty() ? out : out.stream().filter(e -> {
-            String idNorm = norm(e.itemId());
-            if (idNorm.contains(q)) {
-                return true;
-            }
-            String vis = seen.computeIfAbsent(e.itemId(), k -> visibleName(k, lang));
-            return vis != null && norm(vis).contains(q);
-        }).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-        filtered.sort(java.util.Comparator.comparing(e -> sortKey(e.itemId(), lang, seen)));
-        return filtered;
     }
 
-    /** Clave alfabética: nombre visible sin tildes (id si no hay). */
-    private String sortKey(String itemId, String lang, java.util.Map<String, String> seen) {
-        String vis = seen.computeIfAbsent(itemId, k -> visibleName(k, lang));
-        return norm(vis != null ? vis : itemId);
-    }
-
-    /** Mete hasta qty del tipo a la red, drenando huecos. Devuelve lo colocado. */
-    private int depositInvById(World world, Ref<EntityStore> ref, Store<EntityStore> store,
-            String itemId, int qty) {
+    /** Mete hasta qty de UNA variante concreta, conservando metadata/durabilidad. */
+    private int depositInvVariant(World world, Ref<EntityStore> ref, Store<EntityStore> store,
+            String variantId, int qty) {
         List<SimpleItemContainer> chests = NetworkModel.chests(plugin, world, heart);
-        if (chests.isEmpty() || qty <= 0) {
+        if (chests.isEmpty() || qty <= 0 || variantId == null) {
             return 0;
         }
         var source = com.hypixel.hytale.server.core.inventory.InventoryComponent.getCombined(
@@ -342,7 +341,7 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
         int left = qty;
         for (short s = 0; s < source.getCapacity() && left > 0; s++) {
             ItemStack stack = source.getItemStack(s);
-            if (ItemStack.isEmpty(stack) || !itemId.equals(stack.getItemId())) {
+            if (ItemStack.isEmpty(stack) || !variantId.equals(NetworkModel.variantId(stack))) {
                 continue;
             }
             int take = Math.min(left, stack.getQuantity());
@@ -363,25 +362,21 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
         return moved;
     }
 
-    private Message displayName(StorageNetwork.Entry e) {
-        return displayName(e.itemId());
-    }
-
-    private Message displayName(String itemId) {
-        try {
-            return new ItemStack(itemId, 1).getDisplayName();
-        } catch (Exception ex) {
+    private static NetworkModel.Entry find(List<NetworkModel.Entry> list, String variant, int index) {
+        if (variant != null && !variant.isBlank()) {
+            for (NetworkModel.Entry e : list) {
+                if (e.variantId().equals(variant)) {
+                    return e;
+                }
+            }
+            // La variante ya no existe (otro jugador la movió): no caer al
+            // índice, que podría apuntar a otro item.
             return null;
         }
-    }
-
-    private static String firstNonBlank(String... values) {
-        for (String v : values) {
-            if (v != null && !v.isBlank()) {
-                return v;
-            }
+        if (index >= 0 && index < list.size()) {
+            return list.get(index);
         }
-        return "";
+        return null;
     }
 
     private static int parseIndex(String raw) {
@@ -397,10 +392,13 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
         try {
             if (!loggedEvent) {
                 loggedEvent = true;
-                plugin.getLogger().at(Level.INFO).log("StorageHeart diag: evento página=" + data);
+                plugin.getLogger().at(Level.FINE).log("StorageHeart: evento página=" + data);
             }
             World world = Universe.get().getWorld(worldName);
             if (world == null) {
+                return;
+            }
+            if (!checkStillNear(world, ref, store)) {
                 return;
             }
             String action = data.action == null ? "" : data.action;
@@ -437,61 +435,70 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
                     pageInv = 0;
                 }
                 case "clean" -> {
-                    int removed = plugin.linkService().purgeDead(world);
-                    player.sendMessage(Message.raw(removed == 0
-                            ? "All chests responding. Nothing to clean."
-                            : "Cleaned " + removed + " broken link(s)."));
-                    pageRed = 0;
-                    pageInv = 0;
+                    long now = System.currentTimeMillis();
+                    List<String> dead = plugin.linkService().deadChestLines(world, heart);
+                    if (dead.isEmpty()) {
+                        cleanArmedUntil = 0;
+                        player.sendMessage(Message.raw("All chests responding. Nothing to clean."));
+                    } else if (now > cleanArmedUntil) {
+                        cleanArmedUntil = now + 15_000L;
+                        player.sendMessage(Message.raw("Press Clean broken again within 15s to unlink "
+                                + dead.size() + " non-responding chest(s)."));
+                    } else {
+                        cleanArmedUntil = 0;
+                        int removed = plugin.linkService().purgeDead(world);
+                        player.sendMessage(Message.raw("Cleaned " + removed + " broken link(s)."));
+                        pageRed = 0;
+                        pageInv = 0;
+                    }
                 }
                 case "get", "all" -> {
                     rows = currentRows(world);
-                    int idx = parseIndex(data.index);
-                    if (idx >= 0 && idx < rows.size()) {
-                        StorageNetwork.Entry e = rows.get(idx);
+                    NetworkModel.Entry e = find(rows, data.variant, parseIndex(data.index));
+                    if (e != null) {
                         int qty = action.equals("all") ? e.quantity() : 1;
-                        int taken = NetworkModel.withdraw(plugin, world, heart, e.itemId(), qty);
-                        if (taken > 0) {
-                            ItemStack rest = StorageNetworkService.give(
-                                    StorageNetworkService.toStack(e.itemId(), taken), ref, store);
+                        NetworkModel.WithdrawResult result = NetworkModel.withdrawVariant(
+                                plugin, world, heart, e.variantId(), qty);
+                        if (result.taken() > 0 && result.stack() != null) {
+                            ItemStack rest = StorageNetworkService.give(result.stack(), ref, store);
                             if (!ItemStack.isEmpty(rest)) {
-                                NetworkModel.depositEntry(plugin, world, heart,
-                                        new StorageNetwork.Entry(rest.getItemId(), rest.getQuantity()));
+                                ItemStack left = NetworkModel.depositStack(plugin, world, heart, rest);
+                                if (!ItemStack.isEmpty(left)) {
+                                    plugin.getLogger().at(Level.WARNING).log(
+                                            "StorageHeart: no se pudo devolver %d x %s (inventario y red llenos).",
+                                            left.getQuantity(), left.getItemId());
+                                    player.sendMessage(Message.raw("Some items could not be returned: "
+                                            + left.getQuantity() + " x " + left.getItemId()
+                                            + " (inventory and network full)."));
+                                }
                             }
                         }
+                    } else {
+                        player.sendMessage(Message.raw("That item is no longer in the network."));
                     }
                 }
                 case "put", "putall" -> {
-                    // Uno = 1 unidad del tipo; Todo = todo el tipo (varios huecos).
-                    List<StorageNetwork.Entry> inv = invList(ref, store);
-                    int idx = parseIndex(data.index);
-                    if (idx >= 0 && idx < inv.size()) {
-                        StorageNetwork.Entry e = inv.get(idx);
+                    List<NetworkModel.Entry> inv = invList(ref, store);
+                    NetworkModel.Entry e = find(inv, data.variant, parseIndex(data.index));
+                    if (e != null) {
                         int qty = action.equals("putall") ? e.quantity() : 1;
-                        int placed = depositInvById(world, ref, store, e.itemId(), qty);
+                        int placed = depositInvVariant(world, ref, store, e.variantId(), qty);
                         player.sendMessage(Message.raw(placed == 0
                                 ? "No room in the network (or type is gone)."
                                 : "Moved " + placed + " into the network."));
+                    } else {
+                        player.sendMessage(Message.raw("That item is no longer in your inventory."));
                     }
                 }
                 case "close", "dismiss" -> {
-                    // dismiss = el cliente ya la cerró (Esc): solo limpiar rastreo.
                     if (action.equals("close")) {
-                        Player comp = store.getComponent(ref, Player.getComponentType());
-                        if (comp != null) {
-                            comp.getPageManager().closePage(ref, store);
-                        }
+                        closePage(ref, store);
                     } else {
-                        plugin.getLogger().at(Level.INFO).log("StorageHeart diag: dismiss recibido (Esc).");
+                        plugin.getLogger().at(Level.FINE).log("StorageHeart: dismiss recibido (Esc).");
                     }
-                    plugin.linkService().noteClosed(player.getUuid());
                     return;
                 }
-                default -> {
-                    // Desconocido: se loguea (caza de claves) pero se repinta
-                    // igual para no dejar "Loading..." colgado.
-                    plugin.getLogger().at(Level.INFO).log("StorageHeart diag: evento sin acción=" + data);
-                }
+                default -> plugin.getLogger().at(Level.FINE).log("StorageHeart: evento sin acción=" + data);
             }
             UICommandBuilder commands = new UICommandBuilder();
             UIEventBuilder events = new UIEventBuilder();
@@ -503,6 +510,63 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
         }
     }
 
+    /**
+     * La página no debe operar a distancia ni desde otro mundo. Si el jugador
+     * se aleja, se cierra (y no se repite el aviso).
+     */
+    private boolean checkStillNear(World world, Ref<EntityStore> ref, Store<EntityStore> store) {
+        if (closedForDistance) {
+            return false;
+        }
+        if (!plugin.linkService().links().knowsHeart(heart)) {
+            closedForDistance = true;
+            closePage(ref, store);
+            player.sendMessage(Message.raw("That Heart no longer exists."));
+            return false;
+        }
+        var worldUuid = player.getWorldUuid();
+        World playerWorld = worldUuid == null ? null : Universe.get().getWorld(worldUuid);
+        var transform = player.getTransform();
+        if (playerWorld == null || !world.getName().equals(playerWorld.getName()) || transform == null) {
+            return closeForDistance(ref, store, "You are no longer in the Heart's world.");
+        }
+        var pos = transform.getPosition();
+        if (pos == null) {
+            return closeForDistance(ref, store, "You are no longer in the Heart's world.");
+        }
+        double dx = pos.x - (heart.x() + 0.5);
+        double dy = pos.y - (heart.y() + 0.5);
+        double dz = pos.z - (heart.z() + 0.5);
+        if (dx * dx + dy * dy + dz * dz > MAX_USE_DISTANCE * MAX_USE_DISTANCE) {
+            return closeForDistance(ref, store,
+                    "Too far from the Heart (max " + (int) MAX_USE_DISTANCE + " blocks).");
+        }
+        return true;
+    }
+
+    private boolean closeForDistance(Ref<EntityStore> ref, Store<EntityStore> store, String message) {
+        closedForDistance = true;
+        closePage(ref, store);
+        player.sendMessage(Message.raw(message));
+        return false;
+    }
+
+    private void closePage(Ref<EntityStore> ref, Store<EntityStore> store) {
+        Player comp = store.getComponent(ref, Player.getComponentType());
+        if (comp != null) {
+            comp.getPageManager().closePage(ref, store);
+        }
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
+        }
+        return "";
+    }
+
     /** Datos de evento. Claves en mayúscula por requisito del codec. */
     public static class PageEvent {
         public static final BuilderCodec<PageEvent> CODEC = BuilderCodec
@@ -512,6 +576,9 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
                 .add()
                 .append(new KeyedCodec<>("Index", Codec.STRING),
                         (d, v) -> d.index = v, d -> d.index)
+                .add()
+                .append(new KeyedCodec<>("Variant", Codec.STRING),
+                        (d, v) -> d.variant = v, d -> d.variant)
                 .add()
                 .append(new KeyedCodec<>("Value", Codec.STRING),
                         (d, v) -> d.value = v, d -> d.value)
@@ -525,9 +592,6 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
                 .append(new KeyedCodec<>("@SearchQuery", Codec.STRING),
                         (d, v) -> d.searchQuery = v, d -> d.searchQuery)
                 .add()
-                // ShiftHeld llega de verdad (RAW de botones); reservada para
-                // futuro shift-clic. Las claves de slot se quitaron en 0.16.0:
-                // el ItemGrid de muestra no envía nada (punto 2 cerrado).
                 .append(new KeyedCodec<>("ShiftHeld", Codec.BOOLEAN),
                         (d, v) -> d.shiftHeld = v, d -> d.shiftHeld)
                 .add()
@@ -535,6 +599,7 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
 
         public String action;
         public String index;
+        public String variant;
         public String value;
         public String query;
         public String atValue;
@@ -543,9 +608,9 @@ public final class StoragePage extends InteractiveCustomUIPage<StoragePage.PageE
 
         @Override
         public String toString() {
-            return "PageEvent{action=" + action + ", index=" + index + ", value=" + value
-                    + ", query=" + query + ", atValue=" + atValue + ", searchQuery=" + searchQuery
-                    + ", shiftHeld=" + shiftHeld + "}";
+            return "PageEvent{action=" + action + ", index=" + index + ", variant=" + variant
+                    + ", value=" + value + ", query=" + query + ", atValue=" + atValue
+                    + ", searchQuery=" + searchQuery + ", shiftHeld=" + shiftHeld + "}";
         }
     }
 }

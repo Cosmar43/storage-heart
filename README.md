@@ -2,7 +2,7 @@
 
 Unified access to your whole chest network from a single block, inspired by
 Terraria's **Magic Storage** Storage Heart. No commands: everything works
-with items (Heart + Key) and the F key.
+with items (Heart + Key) and F (Ctrl+F with the Key to unlink).
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
@@ -18,9 +18,17 @@ with items (Heart + Key) and the F key.
 5. Press **F with an empty hand** on the Heart to open the interface:
    NETWORK column (take with One/All) and INVENTORY column (store with
    One/All), name search (accents optional, `@mod` filters by mod),
-   Deposit all / matching / held, Clean broken.
-6. To unlink a chest: **F without link mode** on the chest.
-   Close: Close button or Esc.
+   Deposit all / matching / held, Clean broken (press twice to confirm).
+6. To unlink a chest: **Ctrl+F with the Key** on it (works from any
+   network). With no link mode active, F with the Key on a chest simply
+   opens the chest as vanilla.
+   Close: F (like a vanilla chest), Close button, or Esc.
+
+Items are stored with their real data: custom names, durability, quality
+and metadata are preserved when you take them back (a damaged sword stays
+damaged). Opening the Heart shows only the StorageHeart interface; the
+vanilla 9-slot chest window is cancelled before it can appear. The interface
+uses Hytale's container frame, close X, input box and button styles.
 
 ## Crafting (workbench, no knowledge required)
 
@@ -35,8 +43,23 @@ with items (Heart + Key) and the F key.
 
 ## Requirements
 
-- Hytale server **0.7.x** (compiled against `Server-0.7.2.jar`)
+- Hytale server **0.7.2** (manifest `ServerVersion: "=0.7.2"`, compiled against
+  `Server-0.7.2.jar`)
 - Java 25 to compile
+
+## Limits
+
+- 32 blocks between the Heart and each chest.
+- 32 chests per network by default (configurable in `config.json`).
+- Interface actions are only accepted within 10 blocks of the Heart; if you
+  walk away, the page closes.
+
+## Multiplayer note
+
+The Heart has no owner or permission system: anyone who can reach it can open
+the interface and take from the network. Use it on trusted servers, or
+protect the area with your server's world/land permissions. Ownership and
+per-network locks are planned for a future version.
 
 ## Build and package
 

@@ -1,74 +1,202 @@
 package com.storageheart.link;
 
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.server.core.inventory.InventoryComponent;
 import com.hypixel.hytale.server.core.inventory.ItemStack;
 import com.hypixel.hytale.server.core.inventory.container.SimpleItemContainer;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
-import com.hypixel.hytale.component.Ref;
-import com.hypixel.hytale.component.Store;
 import com.storageheart.StorageHeartPlugin;
-import com.storageheart.StorageNetworkService;
 import com.storageheart.core.BlockPos;
-import com.storageheart.core.StorageNetwork;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Operaciones agregadas sobre los cofres reales de una red (la página custom
  * escribe en los cofres en vivo, sin contenedor virtual intermedio).
+ *
+ * <p>Las pilas se agrupan por VARIANTE (id + durabilidad + calidad + metadata),
+ * no solo por id: así una espada dañada no se mezcla con una nueva y al
+ * retirar se devuelve la pila real con todos sus datos.
  */
 public final class NetworkModel {
 
     private NetworkModel() {
     }
 
+    /** Una fila de la interfaz: variante concreta, cantidad total y pila de muestra. */
+    public record Entry(String itemId, int quantity, String variantId, ItemStack sample) {
+        public Entry {
+            Objects.requireNonNull(itemId, "itemId");
+            Objects.requireNonNull(variantId, "variantId");
+            Objects.requireNonNull(sample, "sample");
+            if (quantity <= 0) {
+                throw new IllegalArgumentException("quantity debe ser > 0");
+            }
+        }
+    }
+
+    /** Resultado de retirar: cantidad y pila real (con metadata/durabilidad). */
+    public record WithdrawResult(int taken, ItemStack stack) {
+    }
+
+    private static final class Variant {
+        final String itemId;
+        final String variantId;
+        final ItemStack sample;
+        int quantity;
+
+        Variant(String itemId, String variantId, ItemStack sample, int quantity) {
+            this.itemId = itemId;
+            this.variantId = variantId;
+            this.sample = sample;
+            this.quantity = quantity;
+        }
+    }
+
     public static List<SimpleItemContainer> chests(StorageHeartPlugin plugin, World world, BlockPos heart) {
         List<SimpleItemContainer> out = new ArrayList<>();
+        Set<SimpleItemContainer> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (BlockPos pos : plugin.linkService().links().chestsOf(heart)) {
+            // Nunca tratar un Corazón como cofre (datos viejos de self-link).
+            if (plugin.linkService().links().knowsHeart(pos)) {
+                continue;
+            }
             SimpleItemContainer c = LinkService.chestAt(world, pos.x(), pos.y(), pos.z());
-            if (c != null) {
+            if (c != null && seen.add(c)) {
                 out.add(c);
             }
         }
         return out;
     }
 
-    public static List<StorageNetwork.Entry> entries(StorageHeartPlugin plugin, World world, BlockPos heart) {
-        Map<String, Integer> totals = new LinkedHashMap<>();
+    public static List<Entry> entries(StorageHeartPlugin plugin, World world, BlockPos heart) {
+        Map<String, Variant> variants = new LinkedHashMap<>();
         for (SimpleItemContainer c : chests(plugin, world, heart)) {
             c.forEach((slot, stack) -> {
                 if (!ItemStack.isEmpty(stack)) {
-                    totals.merge(stack.getItemId(), stack.getQuantity(), Integer::sum);
+                    addVariant(variants, stack);
                 }
             });
         }
-        List<StorageNetwork.Entry> out = new ArrayList<>();
-        totals.forEach((id, qty) -> out.add(new StorageNetwork.Entry(id, qty)));
+        return toEntries(variants);
+    }
+
+    /** Agrupa una lista de pilas (p. ej. el inventario del jugador) por variante. */
+    public static List<Entry> entriesOf(List<ItemStack> stacks) {
+        Map<String, Variant> variants = new LinkedHashMap<>();
+        for (ItemStack stack : stacks) {
+            if (!ItemStack.isEmpty(stack)) {
+                addVariant(variants, stack);
+            }
+        }
+        return toEntries(variants);
+    }
+
+    /** Agrupa solo las pilas que pasan el filtro (p. ej. sin llave/corazón). */
+    public static List<Entry> entriesOf(List<ItemStack> stacks, Predicate<ItemStack> include) {
+        Map<String, Variant> variants = new LinkedHashMap<>();
+        for (ItemStack stack : stacks) {
+            if (!ItemStack.isEmpty(stack) && include.test(stack)) {
+                addVariant(variants, stack);
+            }
+        }
+        return toEntries(variants);
+    }
+
+    private static void addVariant(Map<String, Variant> variants, ItemStack stack) {
+        String id = variantId(stack);
+        Variant v = variants.get(id);
+        if (v == null) {
+            variants.put(id, new Variant(stack.getItemId(), id,
+                    stack.cleanCopy().withQuantity(1), stack.getQuantity()));
+        } else {
+            v.quantity += stack.getQuantity();
+        }
+    }
+
+    private static List<Entry> toEntries(Map<String, Variant> variants) {
+        List<Entry> out = new ArrayList<>(variants.size());
+        for (Variant v : variants.values()) {
+            out.add(new Entry(v.itemId, v.quantity, v.variantId, v.sample));
+        }
         return out;
     }
 
-    public static int totalSlots(StorageHeartPlugin plugin, World world, BlockPos heart) {
-        int total = 0;
-        for (SimpleItemContainer c : chests(plugin, world, heart)) {
-            total += c.getCapacity();
+    /**
+     * Identidad estable de una variante. Incluye durabilidad, calidad y
+     * metadata; dos pilas con la misma clave son apilables entre sí.
+     */
+    @SuppressWarnings("deprecation")
+    public static String variantId(ItemStack stack) {
+        String meta = "";
+        try {
+            var metadata = stack.getMetadata();
+            if (metadata != null) {
+                meta = metadata.toJson();
+            }
+        } catch (Exception ignored) {
+            // Metadata rara: se agrupa por los campos básicos.
         }
-        return total;
+        String key = stack.getItemId()
+                + '|' + Double.doubleToLongBits(stack.getDurability())
+                + '|' + Double.doubleToLongBits(stack.getMaxDurability())
+                + '|' + stack.getQualityIndex()
+                + '|' + meta;
+        return sha256(key);
     }
 
-    /** Quita hasta qty del item de los cofres. Devuelve lo retirado. */
-    public static int withdraw(StorageHeartPlugin plugin, World world, BlockPos heart, String itemId, int qty) {
+    private static String sha256(String value) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(24);
+            for (int i = 0; i < 12; i++) {
+                sb.append(Character.forDigit((hash[i] >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(hash[i] & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(value.hashCode());
+        }
+    }
+
+    /**
+     * Retira hasta {@code qty} de una variante concreta. La pila devuelta
+     * conserva metadata, durabilidad y calidad.
+     */
+    public static WithdrawResult withdrawVariant(StorageHeartPlugin plugin, World world, BlockPos heart,
+            String variantId, int qty) {
+        if (variantId == null || qty <= 0) {
+            return new WithdrawResult(0, null);
+        }
         int left = qty;
         int taken = 0;
+        ItemStack sample = null;
         for (SimpleItemContainer c : chests(plugin, world, heart)) {
             for (short slot = 0; slot < c.getCapacity() && left > 0; slot++) {
                 ItemStack stack = c.getItemStack(slot);
-                if (ItemStack.isEmpty(stack) || !itemId.equals(stack.getItemId())) {
+                if (ItemStack.isEmpty(stack) || !variantId.equals(variantId(stack))) {
                     continue;
                 }
                 int take = Math.min(left, stack.getQuantity());
+                if (take <= 0) {
+                    continue;
+                }
+                if (sample == null) {
+                    sample = stack.cleanCopy().withQuantity(1);
+                }
                 c.removeItemStackFromSlot(slot, take);
                 left -= take;
                 taken += take;
@@ -77,18 +205,22 @@ public final class NetworkModel {
                 break;
             }
         }
-        return taken;
+        return new WithdrawResult(taken, sample == null ? null : sample.withQuantity(taken));
     }
 
-    /** Mete una entrada suelta en los cofres (para restos). */
-    public static void depositEntry(StorageHeartPlugin plugin, World world, BlockPos heart, StorageNetwork.Entry e) {
-        ItemStack rest = StorageNetworkService.toStack(e.itemId(), e.quantity());
+    /** Mete una pila suelta en los cofres. Devuelve el remanente (vacío = todo cupo). */
+    public static ItemStack depositStack(StorageHeartPlugin plugin, World world, BlockPos heart, ItemStack stack) {
+        if (ItemStack.isEmpty(stack)) {
+            return stack;
+        }
+        ItemStack rest = stack;
         for (SimpleItemContainer c : chests(plugin, world, heart)) {
             if (ItemStack.isEmpty(rest)) {
                 break;
             }
             rest = c.addItemStack(rest).getRemainder();
         }
+        return rest;
     }
 
     /** Mueve todo el Storage del jugador a los cofres. Devuelve items movidos. */
@@ -104,7 +236,7 @@ public final class NetworkModel {
     public static int depositMatching(StorageHeartPlugin plugin, World world, BlockPos heart,
             Ref<EntityStore> ref, Store<EntityStore> store) {
         java.util.Set<String> known = new java.util.HashSet<>();
-        for (StorageNetwork.Entry e : entries(plugin, world, heart)) {
+        for (Entry e : entries(plugin, world, heart)) {
             known.add(e.itemId());
         }
         if (known.isEmpty()) {
@@ -114,62 +246,9 @@ public final class NetworkModel {
     }
 
     /**
-     * Llena el contenedor virtual 1:1 con las pilas de los cofres (sin
-     * combinar: lo que ves es lo que hay). Devuelve pilas copiadas.
-     */
-    public static int fillVirtual(StorageHeartPlugin plugin, World world, BlockPos heart,
-            SimpleItemContainer virtual) {
-        int v = 0;
-        for (SimpleItemContainer c : chests(plugin, world, heart)) {
-            for (short s = 0; s < c.getCapacity() && v < virtual.getCapacity(); s++) {
-                ItemStack stack = c.getItemStack(s);
-                if (!ItemStack.isEmpty(stack)) {
-                    virtual.setItemStackForSlot((short) v++, stack.cleanCopy());
-                }
-            }
-        }
-        return v;
-    }
-
-    /**
-     * Devuelve lo editado en el virtual a los cofres (vacía y reparte).
-     * Las pilas siempre caben: salieron de esos mismos huecos.
-     */
-    public static void syncBack(StorageHeartPlugin plugin, World world, BlockPos heart,
-            SimpleItemContainer virtual) {
-        List<ItemStack> stacks = new ArrayList<>();
-        for (short s = 0; s < virtual.getCapacity(); s++) {
-            ItemStack stack = virtual.getItemStack(s);
-            if (!ItemStack.isEmpty(stack)) {
-                stacks.add(stack.cleanCopy());
-            }
-        }
-        List<SimpleItemContainer> chests = chests(plugin, world, heart);
-        for (SimpleItemContainer c : chests) {
-            c.clear();
-        }
-        int i = 0;
-        int lost = 0;
-        for (ItemStack stack : stacks) {
-            ItemStack rest = stack;
-            for (int k = 0; k < chests.size() && !ItemStack.isEmpty(rest); k++) {
-                rest = chests.get((i + k) % chests.size()).addItemStack(rest).getRemainder();
-            }
-            if (!ItemStack.isEmpty(rest)) {
-                lost += rest.getQuantity();
-            }
-            i++;
-        }
-        plugin.getLogger().at(java.util.logging.Level.INFO).log(
-                "StorageHeart: ventana cerrada, " + stacks.size() + " pilas devueltas a "
-                        + chests.size() + " cofres" + (lost > 0 ? " (PERDIDOS " + lost + ")" : "") + ".");
-    }
-
-    /**
      * Depósito por hueco: coloca cada pila y descuenta de ese mismo hueco lo
-     * colocado (sin el drenaje secuencial global que confundía tipos).
-     * Ámbito: almacén+mochila (la hotbar NO entra en todo/repetidos, a
-     * propósito). La llave y el bloque Corazón nunca se depositan solos
+     * colocado. Ámbito: almacén+mochila (la hotbar NO entra en todo/repetidos,
+     * a propósito). La llave y el bloque Corazón nunca se depositan solos
      * (solo a propósito con "mano").
      */
     private static int depositFiltered(StorageHeartPlugin plugin, World world, BlockPos heart,
@@ -191,7 +270,9 @@ public final class NetworkModel {
             if (ItemStack.isEmpty(stack)) {
                 continue;
             }
-            if (onlyIds == null && (keyId.equals(stack.getItemId()) || heartId.equals(stack.getItemId()))) {
+            // Nunca auto-depositar la llave ni el Corazón, ni siquiera en
+            // "repetidos" (solo "mano" lo permite a propósito).
+            if (keyId.equals(stack.getItemId()) || heartId.equals(stack.getItemId())) {
                 continue;
             }
             if (onlyIds != null && !onlyIds.contains(stack.getItemId())) {
@@ -213,12 +294,17 @@ public final class NetworkModel {
 
     /**
      * Deposita la pila de la mano (flujo por item sin arrastrar: sujetas la
-     * pila y pulsas el botón). Localiza su hueco por id+cantidad+metadatos.
+     * pila y pulsas el botón). Usa el slot activo real de la hotbar, sin
+     * comparar metadata a mano.
      */
     public static int depositHeld(StorageHeartPlugin plugin, World world, BlockPos heart,
             Ref<EntityStore> ref, Store<EntityStore> store) {
-        ItemStack hand = com.hypixel.hytale.server.core.inventory.InventoryComponent
-                .getItemInHand(store, ref);
+        InventoryComponent.Hotbar hotbar = store.getComponent(ref, InventoryComponent.Hotbar.getComponentType());
+        if (hotbar == null) {
+            return 0;
+        }
+        short slot = hotbar.getActiveSlot();
+        ItemStack hand = hotbar.getInventory().getItemStack(slot);
         if (ItemStack.isEmpty(hand)) {
             return 0;
         }
@@ -226,31 +312,16 @@ public final class NetworkModel {
         if (chests.isEmpty()) {
             return 0;
         }
-        var source = com.hypixel.hytale.server.core.inventory.InventoryComponent.getCombined(
-                store, ref, com.hypixel.hytale.server.core.inventory.InventoryComponent.HOTBAR_STORAGE_BACKPACK);
-        short slot = -1;
-        for (short s = 0; s < source.getCapacity(); s++) {
-            ItemStack stack = source.getItemStack(s);
-            if (ItemStack.isEmpty(stack) || !stack.getItemId().equals(hand.getItemId())
-                    || stack.getQuantity() != hand.getQuantity()) {
-                continue;
-            }
-            if (!java.util.Objects.equals(stack.getMetadata(), hand.getMetadata())) {
-                continue;
-            }
-            slot = s;
-            break;
-        }
-        if (slot < 0) {
-            return 0;
-        }
         ItemStack rest = hand.cleanCopy();
-        for (int k = 0; k < chests.size() && !ItemStack.isEmpty(rest); k++) {
-            rest = chests.get(k).addItemStack(rest).getRemainder();
+        for (SimpleItemContainer c : chests) {
+            if (ItemStack.isEmpty(rest)) {
+                break;
+            }
+            rest = c.addItemStack(rest).getRemainder();
         }
         int placed = hand.getQuantity() - (ItemStack.isEmpty(rest) ? 0 : rest.getQuantity());
         if (placed > 0) {
-            source.removeItemStackFromSlot(slot, placed);
+            hotbar.getInventory().removeItemStackFromSlot(slot, placed);
         }
         return placed;
     }

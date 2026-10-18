@@ -7,8 +7,8 @@ import com.hypixel.hytale.codec.builder.BuilderCodec;
 import javax.annotation.Nonnull;
 
 /**
- * Configuracion del mod. Solo STRING/BOOLEAN para no depender de codecs
- * que cambian entre updates (ver Update 7: cambios en schemas).
+ * Configuracion del mod. STRING/BOOLEAN/INTEGER verificados contra el codec
+ * del servidor 0.7.2.
  */
 public class StorageHeartConfig {
 

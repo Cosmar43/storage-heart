@@ -1,5 +1,62 @@
 # Changelog — StorageHeart
 
+## 1.1.0 — bugfix release (variants, links and UI)
+
+- **Hytale-style interface.** The page now uses the vanilla container frame
+  (`ContainerHeader`/`ContainerPatch`, top/bottom ornaments and the X close
+  button), the standard input box and the secondary/tertiary button styles.
+  The two lists render as container slot rows with quality backgrounds.
+- **The custom interface closes with F too.** `StoragePage` now uses
+  `CustomPageLifetime.CanDismissOrCloseThroughInteraction` (the vanilla
+  lifetime used by chest-like pages), so F closes it like a default chest.
+  Esc and the Close button still work.
+- **No vanilla chest window flash.** The Heart now registers a real
+  `UseBlockEvent.Pre` ECS system and cancels it before the engine executes
+  `Open_Container`; the 9-slot vanilla window never appears and the custom
+  page opens immediately. If a future server stops delivering `Pre`, the old
+  `LivingEntityUseBlockEvent` fallback (with delayed close) still keeps the
+  mod working.
+- **Items keep their data on withdraw.** The network groups by variant
+  (id + durability + quality + metadata), not just by item id. Damaged tools,
+  named items and quality variants are no longer merged or rebuilt as
+  pristine stacks. Taking a damaged sword returns that same sword.
+- **No more accidental unlink.** With no link mode, F with the Key on a chest
+  opens the chest normally. Unlink is now **Ctrl+F with the Key** (or
+  right-click as fallback); the Heart UI explains it.
+- **The Key no longer blocks vanilla use.** F with the Key on doors,
+  workbenches and other blocks falls through to vanilla when you are not
+  linking.
+- **Stale Hearts no longer hijack blocks.** If a Heart is broken and another
+  block is placed in its position, the old position is ignored until a real
+  Heart returns.
+- **The Heart can no longer link itself as a chest.** Chest resolution skips
+  all known Hearts, and legacy self-links are cleaned on load.
+- **Concurrency-safe links and atomic saves.** LinkStore is synchronized,
+  per-player state uses concurrent maps, and `links.json`/`selected.json`
+  are written to a temp file, moved atomically and keep a `.bak`.
+- **Correct chest counter.** The header now shows responding/linked chests
+  (`2/3`, never negative) even when chunks are unloaded.
+- **UI actions use a stable variant id**, not only a list index: another
+  player moving items can no longer make you withdraw the wrong item.
+- **Range checks while the page is open:** actions outside 10 blocks (or in
+  another world) close the page.
+- **Chest cap applies when moving** a chest into a network, and
+  "Deposit matching" never sweeps keys/Hearts.
+- **`Clean broken` asks for confirmation** (press twice within 15s) and caps
+  the number of dead-chest lines shown.
+- **Withdraw remainder is re-deposited preserving metadata**; if it cannot be
+  returned, it is logged and reported instead of silently disappearing.
+- **Build fixes:** `build.ps1` creates `build/` before writing `sources.txt`
+  (works on a fresh clone), compiles with UTF-8 and packages all resources.
+  Gradle now pins `hytaleVersion`, avoids duplicate manifest entries and
+  uses 1.1.0.
+- **Cleanup:** removed the unused virtual `StorageNetwork`, dead ECS systems,
+  deprecated `PlayerInteractEvent` listener, fake network shutdown log and
+  noisy per-click INFO logs. `Deposit held` uses the active hotbar slot
+  instead of deprecated metadata scanning.
+- Search `@mod` now works in the inventory column too; sort mode from config
+  is honored.
+
 ## 1.0.0 — first production version (English, repo-ready)
 
 - Everything user-facing in English: UI, chat messages, item names,
